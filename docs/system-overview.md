@@ -163,53 +163,119 @@ interface AuthState {
 ### 💳 ACCOUNT - Gestión de Cuentas
 
 **ID**: `account`  
-**Propósito**: Consulta y actualización de información de cuentas de clientes  
+**Propósito**: Permitir a back-office y administradores buscar, exhibir y actualizar cuentas de crédito sin salir del flujo del menú (View + Update).  
 **Componentes Clave**:
-- `AccountViewScreen.tsx` - Visualización de detalles de cuenta
-- `AccountUpdateScreen.tsx` - Actualización de información de cuenta
-- `AccountViewPage.tsx` - Página de consulta
-- `AccountUpdatePage.tsx` - Página de actualización
+- `AccountViewPage.tsx` + `AccountUpdatePage.tsx` – páginas protegidas que verifican el rol almacenado en `localStorage` y redirigen a los menús `admin`/`main`.  
+- `AccountViewScreen.tsx` – formulario centrado en validación del Account ID, tarjetas de detalle financiero, información personal y toggles para mostrar datos sensibles.  
+- `AccountUpdateScreen.tsx` – formulario multisección con switch “Edit mode”, validaciones locales de campos (creditLimit, ZIP, activeStatus, FICO) y diálogo de confirmación para escribir.  
+- `useAccountView.ts` + `useAccountUpdate.ts` – hooks que encapsulan `useMutation`, `apiClient`, estado de carga/errores y lógica de comparación JSON para detectar cambios no guardados.  
+- `apiClient` + `useMutation` – cliente HTTP central y manejador de respuestas que detecta tanto respuestas directas del backend como envoltorios de MSW.  
+- `MenuData` – expone `account-view` y `account-update` en el menú principal/back-office con rutas `/accounts/view` y `/accounts/update`.
 
 **APIs Públicas**:
-- `GET /api/account/acccount` - Consulta de cuenta por ID
-- `PUT /api/account/update` - Actualización de información de cuenta
+- `GET /api/account-view?accountId={padded11Digits}` – Búsqueda principal desde `AccountViewScreen`. Retorna `AccountViewResponse` con montos, fechas, cliente, mascaras (SSN/card) y mensajes (info/error).  
+- `GET /api/account-view/initialize` – Llamada automática al montar `AccountViewPage` para mostrar `infoMessage` y validar estado inicial del formulario.  
+- `GET /api/accounts/{accountId}` – Carga los datos editables (AccountUpdateData) usados por `AccountUpdateScreen` y por el switch “Edit mode”.  
+- `PUT /api/accounts/{accountId}` – Persiste cambios de cuenta + cliente con la misma carga del `AccountUpdateData`. Retorna `AccountUpdateResponse` (success + data/errors).  
+- **Mocks (MSW)**: `/api/account-view/process`, `/api/account-view/test-accounts` y `/api/account-view/test-error/:errorType` permiten simular retrasos (600-1000ms), cuentas de prueba y errores controlados durante desarrollo.
 
 **Tipos de Datos**:
 ```typescript
-interface Account {
-  accountId: string;
-  balance: number;
-  creditLimit: number;
-  availableCredit: number;
-  status: string;
-  groupId: string;
-  customer: Customer;
-  cards: CreditCard[];
+interface AccountViewResponse {
+  currentDate: string;
+  currentTime: string;
+  transactionId: string;
+  programName: string;
+  accountId?: number;
+  accountStatus?: 'Y' | 'N';
+  currentBalance?: number;
+  creditLimit?: number;
+  cashCreditLimit?: number;
+  currentCycleCredit?: number;
+  currentCycleDebit?: number;
+  openDate?: string;
+  expirationDate?: string;
+  reissueDate?: string;
+  groupId?: string;
+  customerId?: number;
+  customerSsn?: string;
+  ficoScore?: number;
+  dateOfBirth?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  addressLine3?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  phoneNumber1?: string;
+  phoneNumber2?: string;
+  governmentId?: string;
+  eftAccountId?: string;
+  primaryCardHolderFlag?: 'Y' | 'N';
+  cardNumber?: string;
+  infoMessage?: string;
+  errorMessage?: string;
+  inputValid: boolean;
+  accountFilterValid?: boolean;
+  customerFilterValid?: boolean;
 }
 
-interface Customer {
-  customerId: string;
+interface AccountUpdateData {
+  accountId: number;
+  activeStatus: 'Y' | 'N';
+  currentBalance: number;
+  creditLimit: number;
+  cashCreditLimit: number;
+  openDate: string;
+  expirationDate: string;
+  reissueDate: string;
+  currentCycleCredit: number;
+  currentCycleDebit: number;
+  groupId: string;
+  customerId: number;
   firstName: string;
-  middleName: string;
+  middleName?: string;
   lastName: string;
+  addressLine1: string;
+  addressLine2?: string;
+  addressLine3?: string;
+  stateCode: string;
+  countryCode: string;
+  zipCode: string;
+  phoneNumber1: string;
+  phoneNumber2?: string;
   ssn: string;
+  governmentIssuedId: string;
+  dateOfBirth: string;
+  eftAccountId: string;
+  primaryCardIndicator: string;
   ficoScore: number;
-  address: Address;
-  phones: Phone[];
+}
+
+interface AccountUpdateResponse {
+  success: boolean;
+  data?: AccountUpdateData;
+  message?: string;
+  errors?: string[];
 }
 ```
 
 **Reglas de Negocio**:
-- El accountId debe tener exactamente 11 dígitos
-- El balance puede ser negativo (sobregiro)
-- El crédito disponible = creditLimit - balance
-- Solo cuentas activas (status='Y') pueden realizar transacciones
-- Cada cuenta tiene al menos un cliente asociado
+- RN-001: El `accountId` debe tener exactamente 11 dígitos y no puede ser `00000000000` antes de navegar o enviar.
+- RN-002: `activeStatus` solo admite los valores `'Y'`/`'N'`; el switch en pantalla lo valida antes de mandar.
+- RN-003: Los montos (`creditLimit`, `cashCreditLimit`, `currentBalance`) se validan como numéricos y positivos, el `currentBalance` puede ser negativo (sobregiro).
+- RN-004: `zipCode` debe cumplir `^\d{5}(-\d{4})?$` y `ficoScore` debe estar dentro del rango 300-850 para habilitar el botón Save.
+- RN-005: SSN y número de tarjeta se enmascaran (`***-**-1234` / `****-****-****-1234`) hasta que el usuario habilita el toggle “Show Sensitive Data”.
+- RN-006: Las actualizaciones requieren `Edit mode` activado, el formulario detecta cambios (`hasChanges`) y muestra un diálogo de confirmación antes de enviar.
 
 **Ejemplos de User Stories**:
-- Como usuario back-office, quiero consultar los detalles de una cuenta para ver el saldo y límite de crédito
-- Como usuario back-office, quiero actualizar la información de un cliente para mantener los datos actualizados
-- Como usuario, quiero ver todas las tarjetas asociadas a una cuenta para gestionar los plásticos
+- Como representante de servicio, quiero buscar una cuenta por su ID para presentar los saldos y límites en menos de 500ms.
+- Como administrador, quiero poder modificar el límite de crédito y los datos de contacto del cliente con validaciones automáticas para mantener la consistencia del CRM.
+- Como oficial de cumplimiento, quiero que el SSN y el número de tarjeta estén enmascarados por defecto y solo se muestren cuando se habilite un toggle explícito.
 
 ---
 
