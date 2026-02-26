@@ -230,7 +230,7 @@ export function MenuScreen({
               <TextField
                 value={selectedInput}
                 onChange={handleInputChange}
-                placeholder="01"
+                placeholder="Option number (e.g., 01)"
                 size="small"
                 disabled={loading}
                 inputProps={{
