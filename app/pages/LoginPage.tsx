@@ -313,6 +313,7 @@ export default function LoginPage() {
                   helperText={fieldErrors.userId || '(Max 8 characters)'}
                   disabled={isLoading}
                   autoFocus
+                  placeholder="ADMIN001"
                   inputProps={{
                     maxLength: 8,
                     style: { textTransform: 'uppercase' },
@@ -340,6 +341,7 @@ export default function LoginPage() {
                   helperText={fieldErrors.password || '(Max 8 characters)'}
                   disabled={isLoading}
                   autoComplete="current-password"
+                  placeholder="PASSWORD"
                   inputProps={{
                     maxLength: 8,
                     style: { textTransform: 'uppercase' },
